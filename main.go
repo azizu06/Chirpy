@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -50,13 +51,24 @@ func (cfg *apiConfig) validateChirp(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
 		return
 	}
-	type validResp struct {
-		Valid bool `json:"valid"`
+	type cleanedResp struct {
+		CleanedBody string `json:"cleaned_body"`
 	}
-	resp := validResp{
-		Valid: true,
+	resp := cleanedResp{
+		CleanedBody: cleanChirp(params.Body),
 	}
 	respondWithJSON(w, http.StatusOK, resp)
+}
+
+func cleanChirp(body string) string {
+	words := strings.Split(body, " ")
+	for i, word := range words {
+		lowerWord := strings.ToLower(word)
+		if lowerWord == "kerfuffle" || lowerWord == "sharbert" || lowerWord == "fornax" {
+			words[i] = "****"
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 func respondWithJSON(w http.ResponseWriter, code int, payload any) {
