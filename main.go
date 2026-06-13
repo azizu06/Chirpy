@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -33,6 +34,52 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	cfg.fileServerHits.Store(0)
 }
 
+func (cfg *apiConfig) validateChirp(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Body string `json:"body"`
+	}
+	params := parameters{}
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+	if len(params.Body) > 140 {
+		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
+		return
+	}
+	type validResp struct {
+		Valid bool `json:"valid"`
+	}
+	resp := validResp{
+		Valid: true,
+	}
+	respondWithJSON(w, http.StatusOK, resp)
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(data)
+}
+
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	type errResp struct {
+		Error string `json:"error"`
+	}
+	resp := errResp{
+		Error: msg,
+	}
+	respondWithJSON(w, code, resp)
+}
+
 func main() {
 	mux := http.NewServeMux()
 	apiCfg := &apiConfig{}
@@ -51,5 +98,6 @@ func main() {
 	})
 	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
 	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
+	mux.HandleFunc("POST /api/validate_chirp", apiCfg.validateChirp)
 	log.Fatal(server.ListenAndServe())
 }
