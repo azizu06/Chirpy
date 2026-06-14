@@ -34,3 +34,6 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Teaching workspace (local learning scaffolding, not part of the assignment)
+MISSION.md
