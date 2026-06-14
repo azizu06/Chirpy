@@ -23,6 +23,7 @@ type apiConfig struct {
 	fileServerHits atomic.Int32
 	dbQueries      *database.Queries
 	platform       string
+	jwtSecret      string
 }
 
 type User struct {
@@ -38,6 +39,14 @@ type Chirp struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Body      string    `json:"body"`
 	UserID    uuid.UUID `json:"user_id"`
+}
+
+type LoginResponse struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+	Token     string    `json:"token"`
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
@@ -74,12 +83,21 @@ func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	userID, err := auth.ValidateJWT(tokenString, cfg.jwtSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
 	}
 	params := parameters{}
-	err := json.NewDecoder(r.Body).Decode(&params)
+	err = json.NewDecoder(r.Body).Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		return
@@ -90,7 +108,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	}
 	dbParams := database.CreateChirpParams{
 		Body:   cleanChirp(params.Body),
-		UserID: params.UserID,
+		UserID: userID,
 	}
 	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), dbParams)
 	if err != nil {
@@ -174,8 +192,9 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email            string `json:"email"`
+		Password         string `json:"password"`
+		ExpiresInSeconds int    `json:"expires_in_seconds"`
 	}
 	params := parameters{}
 	err := json.NewDecoder(r.Body).Decode(&params)
@@ -197,11 +216,21 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
 		return
 	}
-	respUser := User{
+	expiresIn := time.Hour
+	if params.ExpiresInSeconds > 0 && params.ExpiresInSeconds < int(time.Hour/time.Second) {
+		expiresIn = time.Duration(params.ExpiresInSeconds) * time.Second
+	}
+	token, err := auth.MakeJWT(user.ID, cfg.jwtSecret, expiresIn)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not create token")
+		return
+	}
+	respUser := LoginResponse{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
+		Token:     token,
 	}
 	respondWithJSON(w, http.StatusOK, respUser)
 }
@@ -244,6 +273,7 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 	dbUrl := os.Getenv("DB_URL")
+	jwtSecret := os.Getenv("JWT_SECRET")
 	db, err := sql.Open("postgres", dbUrl)
 	if err != nil {
 		log.Fatal(err)
@@ -255,6 +285,7 @@ func main() {
 	apiCfg := &apiConfig{
 		dbQueries: dbQueries,
 		platform:  platform,
+		jwtSecret: jwtSecret,
 	}
 	fileServer := http.FileServer(http.Dir("."))
 	handler := http.StripPrefix("/app", fileServer)
