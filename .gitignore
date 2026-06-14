@@ -10,6 +10,7 @@
 
 # Compiled server binary (from `go build -o out`)
 /out
+/Chirpy
 
 # Test binary, built with `go test -c`
 *.test
