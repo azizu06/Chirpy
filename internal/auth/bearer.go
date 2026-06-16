@@ -20,3 +20,18 @@ func GetBearerToken(headers http.Header) (string, error) {
 	}
 	return token, nil
 }
+
+func GetAPIKey(headers http.Header) (string, error) {
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
+		return "", errors.New("authorization header missing")
+	}
+	if !strings.HasPrefix(authHeader, "ApiKey") {
+		return "", errors.New("authorization header malformed")
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "ApiKey"))
+	if token == "" {
+		return "", errors.New("API key missing")
+	}
+	return token, nil
+}

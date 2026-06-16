@@ -4,11 +4,10 @@
     {
       "label": "Build & Run Chirpy",
       "type": "shell",
-      "command": "go build -o out . && ./out",
+      "command": "lsof -ti:8080 | xargs kill 2>/dev/null; go build -o out . && ./out",
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "isBackground": true,
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
