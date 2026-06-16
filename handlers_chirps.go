@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -22,15 +23,47 @@ type Chirp struct {
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
-	dbChirps, err := cfg.dbQueries.GetChirps(r.Context())
+	rawAuthorId := r.URL.Query().Get("author_id")
+	sortDir := r.URL.Query().Get("sort")
+	if rawAuthorId == "" {
+		dbChirps, err := cfg.dbQueries.GetChirps(r.Context())
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error creating chirp")
+			return
+		}
+		chirps := []Chirp{}
+		for _, chirp := range dbChirps {
+			chirps = append(chirps, Chirp(chirp))
+		}
+		sort.Slice(chirps, func(i, j int) bool {
+			if sortDir == "desc" {
+				return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
+			}
+			return chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
+		})
+		respondWithJSON(w, http.StatusOK, chirps)
+		return
+	}
+	authorId, err := uuid.Parse(rawAuthorId)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error creating chirp")
+		respondWithError(w, http.StatusBadRequest, "error")
+		return
+	}
+	dbChirps, err := cfg.dbQueries.GetChirpsByAuthorId(r.Context(), authorId)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error")
 		return
 	}
 	chirps := []Chirp{}
 	for _, chirp := range dbChirps {
 		chirps = append(chirps, Chirp(chirp))
 	}
+	sort.Slice(chirps, func(i, j int) bool {
+		if sortDir == "desc" {
+			return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
+		}
+		return chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
+	})
 	respondWithJSON(w, http.StatusOK, chirps)
 }
 
