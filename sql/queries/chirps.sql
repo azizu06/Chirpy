@@ -25,4 +25,6 @@ WHERE
 -- name: DeleteChirp :exec
 DELETE FROM chirps
 WHERE
-    id = $1;
+    id = $1
+RETURNING
+    *;

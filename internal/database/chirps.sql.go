@@ -42,6 +42,8 @@ const deleteChirp = `-- name: DeleteChirp :exec
 DELETE FROM chirps
 WHERE
     id = $1
+RETURNING
+    id, created_at, updated_at, body, user_id
 `
 
 func (q *Queries) DeleteChirp(ctx context.Context, id uuid.UUID) error {

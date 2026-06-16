@@ -236,6 +236,46 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 	respondWithJSON(w, http.StatusCreated, respUser)
 }
 
+func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request) {
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "error")
+		return
+	}
+	userID, err := auth.ValidateJWT(tokenString, cfg.jwtSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "error")
+		return
+	}
+	rawID := r.PathValue("chirpID")
+	chirpID, err := uuid.Parse(rawID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error")
+		return
+	}
+	chirp, err := cfg.dbQueries.GetChirp(r.Context(), chirpID)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondWithError(w, http.StatusNotFound, "error")
+		return
+	}
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error")
+		return
+	}
+	if chirp.UserID != userID {
+		respondWithError(w, http.StatusForbidden, "error")
+		return
+	}
+
+	err = cfg.dbQueries.DeleteChirp(r.Context(), chirp.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+
+}
+
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Email    string `json:"email"`
@@ -402,6 +442,7 @@ func main() {
 	mux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
 	mux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
 	mux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateUser)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.handlerDeleteChirp)
 
 	log.Fatal(server.ListenAndServe())
 }
